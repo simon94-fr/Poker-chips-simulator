@@ -102,6 +102,13 @@ function startGame(){
 }
 
 function startHand(){
+  // Skip any busted players (0 stack)
+  players = players.filter(p => p.stack > 0);
+  if(players.length === 1){
+    log(`🏆 ${players[0].name} wins the game!`);
+    return;
+  }
+
   dealerIndex = (dealerIndex + 1) % players.length;
   players.forEach(p=>{
     if(p.stack>0){
@@ -141,7 +148,7 @@ function postBlind(index, amount, type){
   p.bet += paid;
   p.contribution += paid;
   if(p.stack===0) p.allin=true;
-  pots[0].amount += paid; // ✅ actually add blinds into main pot
+  pots[0].amount += paid;
   log(`${p.name} posts ${type} of ${paid}`);
 }
 
@@ -206,7 +213,7 @@ function checkCall(){
     p.stack-=callAmt;
     p.bet+=callAmt;
     p.contribution += callAmt;
-    pots[0].amount += callAmt; // ✅ add call to pot
+    pots[0].amount += callAmt;
     if(p.stack===0) p.allin=true;
     log(`${p.name} calls ${callAmt}`);
   }
@@ -223,7 +230,7 @@ function betRaise(){
   p.stack-=amt;
   p.bet+=amt;
   p.contribution += amt;
-  pots[0].amount += amt; // ✅ add raise to pot
+  pots[0].amount += amt;
   currentBet=p.bet;
   if(p.stack===0) p.allin=true;
   p.hasActed = true;
@@ -278,20 +285,29 @@ function updateWinnerDropdown(){
   });
 }
 
+// ✅ Updated declareWinner() – pays out, then starts a new hand
 function declareWinner(name){
   const select = document.getElementById('winnerSelect');
   let winnerName = name || select.value;
   const winner = players.find(p=>p.name===winnerName);
   if(!winner) return log("No such player.");
+
   let totalWon = 0;
   pots.forEach(pot=>{
     winner.stack += pot.amount;
     totalWon += pot.amount;
   });
-  pots=[{name:'Main Pot', amount:0, eligiblePlayers:players.filter(p=>p.stack>0)}];
+
+  pots = [{name:'Main Pot', amount:0, eligiblePlayers:players.filter(p=>p.stack>0)}];
   players.forEach(p=>{p.bet=0; p.contribution=0;});
   renderPlayers(); renderPots();
   log(`${winner.name} wins ${totalWon} chips!`);
+
+  // ✅ Automatically start next hand after short delay
+  setTimeout(()=>{
+    log(`--- Starting next hand ---`);
+    startHand();
+  }, 1500);
 }
 </script>
 </body>
