@@ -103,7 +103,6 @@ function startGame(){
 
 function startHand(){
   dealerIndex = (dealerIndex + 1) % players.length;
-
   players.forEach(p=>{
     if(p.stack>0){
       p.active=true; p.bet=0; p.allin=false; p.hasActed=false; p.contribution=0;
@@ -113,11 +112,9 @@ function startHand(){
   pots = [{name:'Main Pot', amount:0, eligiblePlayers:players.filter(p=>p.stack>0)}];
   roundStage = 0;
   currentBet = 0;
-
   postBlinds(); 
   currentBet = players[getBBIndex()].bet;
   turn = getNextActivePlayer(getBBIndex()+1);
-
   renderPlayers();
   renderPots();
   updateRoundIndicator();
@@ -125,14 +122,11 @@ function startHand(){
   updateWinnerDropdown();
 }
 
-/* FIXED BLIND POSTING ORDER */
 function postBlinds(){
   const sbAmount = Number(document.getElementById('sbAmount').value);
   const bbAmount = Number(document.getElementById('bbAmount').value);
-
   const sbIndex = getNextActivePlayer(dealerIndex + 1);
   const bbIndex = getNextActivePlayer(sbIndex + 1);
-
   postBlind(sbIndex, sbAmount, 'Small Blind');
   postBlind(bbIndex, bbAmount, 'Big Blind');
 }
@@ -147,7 +141,7 @@ function postBlind(index, amount, type){
   p.bet += paid;
   p.contribution += paid;
   if(p.stack===0) p.allin=true;
-  updatePots();
+  pots[0].amount += paid; // ✅ actually add blinds into main pot
   log(`${p.name} posts ${type} of ${paid}`);
 }
 
@@ -158,7 +152,7 @@ function getNextActivePlayer(start){
     if(players[idx].active && !players[idx].allin) return idx;
     idx = (idx+1) % players.length;
   } while(idx !== startIdx);
-  return idx; // fallback
+  return idx; 
 }
 
 function renderPlayers(){
@@ -190,10 +184,9 @@ function renderPots(){
   });
 }
 
-// --- GAME ACTIONS ---
-document.getElementById('foldBtn').onclick = ()=>{ fold(); };
-document.getElementById('checkCallBtn').onclick = ()=>{ checkCall(); };
-document.getElementById('betRaiseBtn').onclick = ()=>{ betRaise(); };
+document.getElementById('foldBtn').onclick = ()=> fold();
+document.getElementById('checkCallBtn').onclick = ()=> checkCall();
+document.getElementById('betRaiseBtn').onclick = ()=> betRaise();
 
 function fold(){
   players[turn].active=false;
@@ -213,14 +206,12 @@ function checkCall(){
     p.stack-=callAmt;
     p.bet+=callAmt;
     p.contribution += callAmt;
+    pots[0].amount += callAmt; // ✅ add call to pot
     if(p.stack===0) p.allin=true;
-    updatePots();
-    log(callAmt===diff?`${p.name} calls ${diff}`:`${p.name} goes all-in with ${callAmt}`);
+    log(`${p.name} calls ${callAmt}`);
   }
   p.hasActed = true;
-  renderPlayers();
-  renderPots();
-  nextTurn();
+  renderPlayers(); renderPots(); nextTurn();
 }
 
 function betRaise(){
@@ -228,44 +219,19 @@ function betRaise(){
   if(amt<=0) return log('Enter valid amount');
   const p = players[turn];
   const minCall = currentBet - p.bet;
-  if(amt<minCall && amt<p.stack) return log(`Bet must be at least ${minCall} unless going all-in.`);
   if(p.stack<amt) return log('Not enough chips.');
   p.stack-=amt;
   p.bet+=amt;
   p.contribution += amt;
+  pots[0].amount += amt; // ✅ add raise to pot
   currentBet=p.bet;
   if(p.stack===0) p.allin=true;
-  updatePots();
   p.hasActed = true;
   log(`${p.name} bets/raises ${amt}`);
   document.getElementById('manualAmount').value='';
-  renderPlayers();
-  renderPots();
-  nextTurn();
+  renderPlayers(); renderPots(); nextTurn();
 }
 
-// --- FIXED SIDE POT LOGIC ---
-function updatePots() {
-  const activeContribs = players.map(p => p.contribution).filter(c => c > 0);
-  if (activeContribs.length === 0) return;
-
-  const levels = [...new Set(activeContribs)].sort((a, b) => a - b);
-  pots = [];
-  let prev = 0;
-  for (let i = 0; i < levels.length; i++) {
-    const level = levels[i];
-    const eligible = players.filter(p => p.contribution >= level);
-    const potAmount = (level - prev) * eligible.length;
-    pots.push({
-      name: i === 0 ? "Main Pot" : `Side Pot ${i}`,
-      amount: potAmount,
-      eligiblePlayers: [...eligible],
-    });
-    prev = level;
-  }
-}
-
-// --- TURN & ROUND MANAGEMENT ---
 function nextTurn(){
   const stillIn = players.filter(p=>p.active);
   if(stillIn.length<=1){
@@ -273,18 +239,9 @@ function nextTurn(){
     declareWinner(stillIn[0].name);
     return;
   }
-
-  const activeNotAllIn = players.filter(p=>p.active && !p.allin);
-  if(activeNotAllIn.length===0){ advanceRound(); return; }
-
   const allBetsMatched = stillIn.every(p=>p.bet===currentBet||p.allin);
   const allActed = stillIn.every(p=>p.hasActed);
-
-  if(allBetsMatched && allActed){
-    advanceRound();
-    return;
-  }
-
+  if(allBetsMatched && allActed){ advanceRound(); return; }
   turn = getNextActivePlayer(turn+1);
   renderPlayers();
 }
@@ -294,12 +251,7 @@ function advanceRound(){
   players.forEach(p=>p.hasActed=false);
   players.forEach(p=>p.bet=0);
   currentBet=0;
-
-  if(roundStage===1) log('--- FLOP ---');
-  else if(roundStage===2) log('--- TURN ---');
-  else if(roundStage===3) log('--- RIVER ---');
-  else if(roundStage>3){ log('Showdown!'); document.getElementById('roundIndicator').textContent=''; return; }
-
+  if(roundStage>3){ log('Showdown!'); return; }
   turn = getNextActivePlayer(dealerIndex+1);
   updateRoundIndicator();
   renderPlayers();
@@ -307,23 +259,19 @@ function advanceRound(){
 
 function updateRoundIndicator(){
   const indicator=document.getElementById('roundIndicator');
-  if(roundStage===0) indicator.textContent='Pre-Flop';
-  else if(roundStage===1) indicator.textContent='Flop';
-  else if(roundStage===2) indicator.textContent='Turn';
-  else if(roundStage===3) indicator.textContent='River';
+  indicator.textContent=['Pre-Flop','Flop','Turn','River'][roundStage]||'';
 }
 
 function log(msg){
   const logEl=document.getElementById('log');
   const time=new Date().toLocaleTimeString();
   logEl.innerHTML=`<div>[${time}] ${msg}</div>`+logEl.innerHTML;
-  logEl.scrollTop = 0;
 }
 
 function updateWinnerDropdown(){
   const select = document.getElementById('winnerSelect');
   select.innerHTML = '';
-  players.filter(p=>p.stack>0).forEach(p=>{
+  players.forEach(p=>{
     const option = document.createElement('option');
     option.value = p.name; option.textContent = p.name;
     select.appendChild(option);
@@ -335,36 +283,15 @@ function declareWinner(name){
   let winnerName = name || select.value;
   const winner = players.find(p=>p.name===winnerName);
   if(!winner) return log("No such player.");
-
   let totalWon = 0;
   pots.forEach(pot=>{
-    if(pot.eligiblePlayers.includes(winner)){
-      winner.stack += pot.amount;
-      totalWon += pot.amount;
-    }
+    winner.stack += pot.amount;
+    totalWon += pot.amount;
   });
-
-  players.forEach(p=>{
-    if(p.stack>0){ p.bet=0; p.active=true; p.allin=false; p.hasActed=false; p.contribution=0; }
-    else { p.active=false; log(`${p.name} is out of chips!`); }
-  });
-
   pots=[{name:'Main Pot', amount:0, eligiblePlayers:players.filter(p=>p.stack>0)}];
-  renderPlayers();
-  renderPots();
-  updateRoundIndicator();
-  log(`${winner.name} wins all applicable pots (${totalWon} chips)!`);
-  checkChipIntegrity();
-  updateWinnerDropdown();
-  startHand();
-}
-
-// --- DEBUG CHECK ---
-function checkChipIntegrity(){
-  const totalChips = players.reduce((sum,p)=>sum+p.stack,0);
-  const totalPot = pots.reduce((sum,p)=>sum+p.amount,0);
-  const total = totalChips + totalPot;
-  log(`Chip Integrity Check: total = ${total}`);
+  players.forEach(p=>{p.bet=0; p.contribution=0;});
+  renderPlayers(); renderPots();
+  log(`${winner.name} wins ${totalWon} chips!`);
 }
 </script>
 </body>
